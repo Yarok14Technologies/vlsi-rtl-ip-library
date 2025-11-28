@@ -1,15 +1,3 @@
-Done — I created the four artifacts plus a visual diagram and saved them so you can download them directly.
-
-Download links:
-
-* [Download scan_dff.sv](sandbox:/mnt/data/scan_dff.sv)
-* [Download scan_chain_top.sv](sandbox:/mnt/data/scan_chain_top.sv)
-* [Download scan_insert.tcl](sandbox:/mnt/data/scan_insert.tcl)
-* [Download test_mode.sdc](sandbox:/mnt/data/test_mode.sdc)
-* [Download scan_chain_diagram.png](sandbox:/mnt/data/scan_chain_diagram.png)
-
----
-
 ## Next: 45-minute mock interview simulation (you ask, I answer, you grade)
 
 Ready when you are — here's how we’ll run it so it's highest value:
