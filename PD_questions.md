@@ -889,4 +889,215 @@ Below are concise, interview-ready answers (one short paragraph each) followed b
 
 ---
 
+Absolutely — here is a clean **interview-ready** package for **Timing Diagrams + RTL Examples** **+ Physical Design Coding Tasks (TCL + SDC)**.
+Everything is modular so you can reuse in multiple projects.
+
+---
+
+# ✅ TIMING DIAGRAMS (with explanations)
+
+### 1️⃣ Setup/Hold — Launch → Capture flop
+
+```
+Clock:  ┌─┐   ┌─┐   ┌─┐
+       ─┘ └───┘ └───┘ └───
+
+Data:   ===xxxx------========
+            ↑   ↑
+         Hold  Setup
+```
+
+**Rule:**
+
+* **Data must be stable `setup` time *before* and `hold` time *after* capturing clock edge**
+
+---
+
+### 2️⃣ Handshake Protocol — Valid/Ready
+
+```
+clk   ┌‾┐ ┌‾┐ ┌‾┐ ┌‾┐ ┌‾┐
+     ─┘ └─┘ └─┘ └─┘ └─┘
+
+valid 0   1   1   0   0
+ready 0   0   1   1   0
+data      XX  AA
+```
+
+Transfer **only when:**
+
+```
+(valid == 1) && (ready == 1)
+```
+
+---
+
+### 3️⃣ FSM State Transition
+
+```
+clk:   ┌─┐ ┌─┐ ┌─┐ ┌─┐
+      ─┘ └─┘ └─┘ └─┘
+
+state: IDLE → S1 → S2 → IDLE
+```
+
+---
+
+### 4️⃣ 2-flip-flop Synchronizer (CDC)
+
+```
+Async: 0----1----------------
+                 ┌────────── stable after sync
+CLK:  ┌─┐ ┌─┐ ┌─┐ ┌─┐
+     ─┘ └─┘ └─┘ └─┘
+
+FF1:  x   x   1   1
+FF2:  x   x   x   1
+```
+
+---
+
+# 🔷 RTL CODING EXAMPLES (Recruiter-friendly)
+
+### 1️⃣ Valid/Ready Pipeline Register
+
+```systemverilog
+module pipe_reg (
+    input  logic        clk, rst_n,
+    input  logic        valid_i,
+    input  logic [31:0] data_i,
+    output logic        ready_o,
+    output logic        valid_o,
+    output logic [31:0] data_o
+);
+
+assign ready_o = !valid_o || ready_i;
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if(!rst_n) begin
+        valid_o <= 1'b0;
+    end else if (ready_o) begin
+        valid_o <= valid_i;
+        data_o  <= data_i;
+    end
+end
+
+endmodule
+```
+
+---
+
+### 2️⃣ FSM (Moore style)
+
+```systemverilog
+typedef enum logic [1:0] {IDLE, S1, S2} state_t;
+
+module fsm_example(input clk, rst, in, output reg out);
+
+state_t state, next;
+
+always_ff @(posedge clk or posedge rst)
+    if(rst) state <= IDLE;
+    else    state <= next;
+
+always_comb begin
+    next = state;
+    out  = 0;
+    case(state)
+        IDLE: if(in) next = S1;
+        S1  : begin out = 1; next = S2; end
+        S2  : next = IDLE;
+    endcase
+end
+
+endmodule
+```
+
+---
+
+### 3️⃣ 2-Flop Synchronizer (CDC)
+
+```systemverilog
+module sync_2ff(input clk, d_async, output logic q_sync);
+    logic q1;
+    always_ff @(posedge clk) begin
+        q1     <= d_async;
+        q_sync <= q1;
+    end
+endmodule
+```
+
+---
+
+# 🔶 PHYSICAL DESIGN AUTOMATION TASKS
+
+## ✔ Sample **TCL Script** — Floorplan + Powerplan + Placement
+
+(Works for most PnR tools: Innovus/OpenROAD)
+
+```tcl
+# -------- Floorplan --------
+floorPlan -coreAspectRatio 1.0 -util 65
+
+# Place macros using .lef
+placeInstance SRAM1 10 50 -orient R0
+placeBlockage -box {0 0 50 200}
+
+# -------- Power Planning --------
+addRing -type core -layer {M4 M5} -width {2 2}
+addStripe -direction horizontal -layer M5 -width 2 -pitch 40
+addStripe -direction vertical   -layer M4 -width 2 -pitch 40
+
+# -------- Placement --------
+place_opt_design
+
+# Filler and tap insertion
+addFiller -cell FILLCELL
+add_tap_cell_array -distance 40
+```
+
+---
+
+## ✔ Sample **SDC Constraints File**
+
+(Setup/Hold clean for STA)
+
+```tcl
+# Clock Definition
+create_clock -name core_clk -period 10 [get_ports clk]   ;# 100 MHz
+
+# Input/Output Delays
+set_input_delay  2 -clock core_clk [all_inputs]
+set_output_delay 2 -clock core_clk [all_outputs]
+
+# Clock Uncertainty
+set_clock_uncertainty 0.15 [get_clocks core_clk]
+
+# Drive Strength & Load
+set_drive 4 [all_inputs]
+set_load  0.1 [all_outputs]
+
+# False & Multi-cycle paths
+set_false_path -from [get_pins rst_n]
+set_multicycle_path 2 -setup \
+    -from [get_pins u0/data_reg*/Q] \
+    -to   [get_pins u1/data_reg*/D]
+set_multicycle_path 1 -hold \
+    -from [get_pins u0/data_reg*/Q] \
+    -to   [get_pins u1/data_reg*/D]
+```
+
+---
+
+# 🎁 Bonus — Quick Timing Debug Rules
+
+| Violation Type | Fix                                                                      |
+| -------------- | ------------------------------------------------------------------------ |
+| **Setup**      | Upsize cells, add pipeline flop, reduce wire length, use **useful skew** |
+| **Hold**       | Add delay cells / reroute / downsize                                     |
+| **IR Drop**    | Add straps + decaps                                                      |
+| **DRC**        | Re-route / alter spacing / layer change                                  |
+| **Antenna**    | Add diodes / break metal                                                 |
+
+---
 
