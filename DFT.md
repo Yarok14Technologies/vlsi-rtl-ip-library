@@ -125,3 +125,226 @@ B — Produce practical coding artifacts (scan FF RTL + scan insertion TCL + SDC
 C — Build a combined DFT + PDE + RTL mock interview set (45-minute simulation + answers + grading rubric)
 
 Or I can continue straight through and finish the remaining Qs (MBIST → Advanced → Cases) without you choosing. What do you want me to produce *right now*?
+
+
+Perfect — continuing exactly from **Q26 → Q65** with the same **concise interview-grade** format.
+(You already have Q1–Q25 above.)
+
+---
+
+# 🟥 MBIST / MEMORY TESTING (Q26–Q32)
+
+**26. Why can’t you just use scan for embedded memories?**
+Memories are dense cell arrays without scan flops → internal nodes not directly controllable/observable → massive area/timing overhead if replaced by scan → so dedicated MBIST needed.
+
+**27. MBIST architecture — main blocks**
+
+* **Address generator** (up/down/random)
+* **Data/background pattern generator**
+* **March algorithm controller**
+* **Comparator** (read compare)
+* **BISR fuse/repair logic** (optional)
+* **Interface to memory wrapper** (write enable, chip enable)
+
+**28. Common Memory March algorithms**
+
+* **March C−** (most common: detects stuck-at, transition, coupling)
+* **March LR** (Left–Right, covers decoder faults)
+* **March B** (higher coverage, more cycles)
+
+**29. What are repair schemes?**
+Mapping faulty memory rows/columns to **spare rows/columns** → improves yield.
+
+**30. What is BISR?**
+**Built-In Self-Repair**: Automatic detection (via MBIST) + repair using fuse map programming to remap faulty locations.
+
+**31. Explain redundancy (spare rows/columns)**
+Extra rows/columns built into RAM. On failures, fuse-based address redirection routes access to spare instead of bad cell.
+
+**32. ECC vs BISR — which is better?**
+
+* **ECC** = Corrects soft errors (alpha particle hits, noise) at runtime
+* **BISR** = Repairs manufacturing defects permanently
+  Often **both** used in high-reliability SoCs.
+
+---
+
+# 🟪 LOGIC BIST (LBIST) (Q33–Q37)
+
+**33. What is LBIST? When is it used?**
+On-chip pseudo-random test pattern generation (LFSR) + response compaction (MISR).
+Used in automotive, aerospace, servers → **in-field periodic self-test**, safety compliance (ASIL, ISO-26262).
+
+**34. What is LFSR? What is MISR?**
+
+* **LFSR**: Linear feedback shift register → generates pseudo-random stimuli
+* **MISR**: Multiple-input signature register → compresses responses into signature
+
+**35. What is signature analysis?**
+Final MISR value = **signature**. Compare with expected (golden) signature → if mismatch = fail.
+
+**36. What is aliasing in LBIST? How minimized?**
+Different fault responses produce same MISR signature.
+Reduce by:
+
+* Using primitive-polynomial LFSR/MISR
+* Larger MISR width
+* Pattern count increase
+
+**37. Power issues in LBIST — how reduced?**
+Random patterns toggle too many nets → IR drop.
+Fixes: weighted pseudo-random patterns, clock gating, phase shifters, low-power X-fill, reduce shift frequency.
+
+---
+
+# 🟫 JTAG / IEEE 1149.1 (Q38–Q42)
+
+**38. Why do we need boundary scan?**
+To test board-level interconnect faults (opens/shorts) **without probes**.
+
+**39. Explain TAP controller state machine**
+16-state FSM controlling scan path:
+**Test-Logic-Reset → Run-Test → DR states → IR states**
+Transitions controlled by **TMS** on **TCK**.
+
+**40. EXTEST vs INTEST vs BYPASS**
+
+* **EXTEST**: Test board traces between chips
+* **INTEST**: Test internal logic via boundary cells
+* **BYPASS**: Skip the chip to shorten chain
+
+**41. Difference between 1149.1 and 1149.6**
+1149.6 supports high-speed differential IO testing (AC-coupled nets).
+
+**42. How is JTAG used for board testing?**
+Chain several ICs → shift patterns through → detect soldering defects, shorts/opens.
+
+---
+
+# 🔷 ATPG & FAULT COVERAGE (Q43–Q49)
+
+**43. What is test compression and why needed?**
+Reduces scan-in/out volume → fewer patterns → lower test time/cost.
+Using **decompressors (EDT)** + **compactors (X-compactor)** inside chip.
+
+**44. What are EDT and X-compactors?**
+
+* **EDT**: Embedded Deterministic Test decompressor → expands small tester pattern to wide scan chain stimuli
+* **X-compactor**: Compresses scan-out while handling unknowns (X-masking/canceling)
+
+**45. What is capture power and how reduced?**
+High toggling during at-speed capture → IR drop → false fails.
+Reduce by: low-power ATPG, segment capture, clock staggering, power-aware fill, gated FFs.
+
+**46. Launch-on-Capture (LOC) vs Launch-on-Shift (LOS)**
+
+* **LOC**: Launch occurs during functional capture clock
+* **LOS**: Launch directly from last shift → more coverage but harder timing (shift path = functional path)
+
+**47. Why can LOS detect more faults?**
+Allows **robust transition launch** on more internal nodes → tests more delay paths.
+
+**48. Reasons for low fault coverage**
+
+* Uncontrollable/Unobservable nodes
+* Uninitialized RAMs, black box logic
+* Clock gating without bypass
+* Asynchronous logic / CDC
+* Low-quality scan insertion
+
+**49. How to improve coverage w/o RTL changes**
+
+* Insert Test Points
+* Enable test compression
+* Handle X sources better
+* Split/rebalance scan chains
+* Fix DFT rule violations (e.g., bypass gating)
+
+---
+
+# 🔶 PHYSICAL DFT + TIMING (Q50–Q54)
+
+**50. Scan chain constraints during PnR**
+
+* Location-aware chain stitching
+* Same clock domain grouping
+* Minimize long routing
+* Avoid crossing voltage/power domains
+
+**51. Why is hold fixing critical in scan mode?**
+Shift path is very short → hold fails common → buffer insertion or scan reordering needed.
+
+**52. Power constraints impacting testing**
+During shift/capture → huge simultaneous toggling → IR drop, overheating.
+Use low-power X-fill, slow shift clocks, domain-wise test.
+
+**53. SCANcell vs Non-scan cell rules**
+Every sequential element must be scannable except special cases (RAM flops, analog blocks).
+Ensure **consistent scan enables** and no latches in logic path unless designed for scan.
+
+**54. DFT checks at RTL / Netlist / GLS**
+
+| Stage          | Focus                                                      |
+| -------------- | ---------------------------------------------------------- |
+| RTL            | DFT rule checks, clock gating test mode logic              |
+| Netlist        | Scan connectivity, test mode timing, compression structure |
+| Gate Sim (GLS) | Pattern validation, X-propagation, real delays             |
+
+---
+
+# 🚀 ADVANCED DFT (Q55–Q60)
+
+**55. Hierarchical DFT in chiplets**
+Test wrappers per die/IP → local ATPG → compressed test data → top-level interconnect test using **die-to-die boundary scan**.
+
+**56. DFT in power-gated designs**
+Need **test power controller** to wake one island at a time, isolate shut-down domains, and route scan around powered-off logic.
+
+**57. DFT challenges in CDC logic**
+Clock domains require isolation; SE path must be synchronous. Add boundary cells, lock-up flops, domain-wise scan.
+
+**58. IEEE 1687 (IJTAG)**
+Standard for **in-chip embedded instruments** access network (sensors, monitors) using reconfigurable scan paths.
+
+**59. How partial scan impacts ATPG**
+Leaves some sequential elements un-scanned → lower coverage, harder algorithms, more patterns → used when area/power tight.
+
+**60. Compression ratio impacts**
+
+| Higher Compression | Effect                                 |
+| ------------------ | -------------------------------------- |
+| ↑ Ratio            | ↓ Patterns, ↓ ATE time                 |
+| Too high           | ATPG runtime ↑, aliasing ↑, coverage ↓ |
+
+---
+
+# 🧠 CASE-BASED PRACTICALS (Q61–Q65)
+
+**61. Scan chain fails in GLS — what checks?**
+
+* Scan order mismatch vs ATPG definition
+* SE glitching
+* Floating reset values → Xs
+* Wrong clock/phase usage
+* Incomplete stitching
+
+**62. Low transition coverage — root cause?**
+
+* Insufficient at-speed clocks
+* Clock gating not bypassed
+* LOS disabled
+* Reconvergent fan-out masking transitions
+
+**63. Setup clean, hold fail in shift — why?**
+Shift mode path shorter → hold violations even if capture ok → fix by reordering / buffers.
+
+**64. Clock gating blocks scan — what to do?**
+Force gating enable high in **test mode** or use integrated clock gating cells with **test override** pins.
+
+**65. Testbench mismatch in gate sim — likely root cause?**
+X-propagation, async resets not synchronized, incorrect SE during capture, uninitialized memories, wrong scan IO connection.
+
+---
+
+
+
