@@ -300,5 +300,218 @@ For each, I give the minimal synthesizable approach and key hints.
 
 ---
 
+Below are **clear, interview-ready answers** for RTL / ASIC / DV interviews (Qualcomm / Google / NVIDIA level).
 
-Which one should I generate now — (code for a specific problem), (detailed writeup for a difficult question), or (PDF cheat sheet)?
+---
+
+# ✅ **1. Difference between blocking (=) and non-blocking (<=) assignments**
+
+### **Blocking (=)**
+
+* Executes **in order**, one statement must finish before the next begins.
+* Used in **combinational logic**.
+* Behaves like software assignment.
+
+Example:
+
+```sv
+a = b;
+c = a;   // uses updated a
+```
+
+### **Non-blocking (<=)**
+
+* Executes **in parallel** at the end of the simulation time step.
+* Used in **sequential logic** (flops).
+
+Example:
+
+```sv
+a <= b;
+c <= a;   // uses old a, not updated a
+```
+
+---
+
+# ✅ **2. When to use = vs <= in SystemVerilog**
+
+Use **= (blocking)** for:
+
+* `always_comb`
+* pure combinational logic
+* functions
+* testbench code (usually)
+
+Use **<= (non-blocking)** for:
+
+* `always_ff @(posedge clk)`
+* sequential logic (flip-flops)
+* pipeline registers
+
+Golden rule:
+**Combinational = , Sequential <=**
+
+---
+
+# ✅ **3. Combinational vs Sequential logic**
+
+### **Combinational Logic**
+
+* Output depends **only on current inputs**.
+* No memory.
+* Examples: adders, muxes, comparators.
+
+### **Sequential Logic**
+
+* Output depends on **current inputs + previous state**.
+* Requires a **clock**.
+* Examples: flip-flops, counters, registers, FSM state registers.
+
+---
+
+# ✅ **4. How do you infer a latch unintentionally?**
+
+You infer a latch when:
+
+* In a combinational block, **not all output signals are assigned in every path**.
+
+Example (unintentional latch):
+
+```sv
+always_comb begin
+  if (sel)
+    y = a;
+  // missing else → y holds old value → latch inferred
+end
+```
+
+Fix:
+
+```sv
+always_comb begin
+  y = 0;
+  if (sel)
+    y = a;
+end
+```
+
+---
+
+# ✅ **5. Why use `always_comb` instead of `always @(*)`?**
+
+`always_comb` provides:
+
+* **Stricter linting**
+* Automatically detects missing sensitivity list
+* Flags unintended **latches**
+* Forces single driver
+* Better simulation correctness
+* Ensures no timing controls inside
+
+Industry standard:
+**always_comb** → best practice for combinational logic.
+
+---
+
+# ✅ **6. Explain setup and hold times**
+
+### **Setup Time**
+
+* Data must be **stable BEFORE** the clock edge.
+* Violation → data changes too late → flop may capture wrong value.
+
+### **Hold Time**
+
+* Data must be **stable AFTER** the clock edge.
+* Violation → data changes too early → flop becomes unstable.
+
+---
+
+# ✅ **7. What is metastability and how to avoid it?**
+
+**Metastability** occurs when:
+
+* A flip-flop receives data close to its setup/hold window.
+* Output enters an unpredictable, unstable state (neither 0 nor 1).
+
+It cannot be fully eliminated but can be reduced by:
+
+* **Using synchronizers**
+* **Using CDC (Clock Domain Crossing) techniques**
+* Increasing MTBF (mean time between failures)
+
+---
+
+# ✅ **8. What is a synchronizer? Why use 2-stage synchronizers?**
+
+A **synchronizer** safely transfers a signal from **one clock domain to another**.
+
+### Typical 2-flop synchronizer:
+
+```sv
+always_ff @(posedge clk_b) begin
+  sync1 <= signal_a;
+  sync2 <= sync1;
+end
+```
+
+### Why 2 stages?
+
+* **First flop** may become metastable.
+* **Second flop** gives additional clock period to settle.
+* Significantly increases MTBF.
+
+High-reliability systems sometimes use **3-stage synchronizers**.
+
+---
+
+# ✅ **9. FSM Types: Mealy vs Moore**
+
+### **Mealy FSM**
+
+* Output depends on **state + input**.
+* Can react faster.
+* Risk: outputs may glitch if input glitches.
+
+### **Moore FSM**
+
+* Output depends **only on state**.
+* More stable output (no glitches).
+* Slower reaction (one cycle delay).
+
+---
+
+# ✅ **10. What is a sticky/edge-detect pulse? How to generate it?**
+
+### **Edge Detect Pulse**
+
+Generates a **1-cycle pulse** when a signal rises or falls.
+
+**Rising-edge pulse:**
+
+```sv
+logic d, d_q;
+
+always_ff @(posedge clk) begin
+  d_q <= d;
+end
+
+assign pulse = d & ~d_q;
+```
+
+### **Sticky Pulse**
+
+* Latches high once triggered
+* Stays high until cleared
+
+Example:
+
+```sv
+always_ff @(posedge clk or negedge rst_n) begin
+  if (!rst_n)
+    sticky <= 0;
+  else if (pulse)
+    sticky <= 1;
+end
+```
+
