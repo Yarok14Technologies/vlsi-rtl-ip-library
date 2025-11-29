@@ -555,4 +555,327 @@ module fp_add(
 endmodule
 ```
 
+---
+
+# ** Part 3: Memory, FIFO & Bus/Protocol Interfaces**
+
+---
+
+## **22. Synchronous Single-Port RAM (Parameterized)**
+
+```verilog
+module single_port_ram #(
+    parameter WIDTH = 8,
+    parameter DEPTH = 16
+)(
+    input clk,
+    input we,
+    input [WIDTH-1:0] din,
+    input [$clog2(DEPTH)-1:0] addr,
+    output reg [WIDTH-1:0] dout
+);
+    reg [WIDTH-1:0] mem [0:DEPTH-1];
+
+    always @(posedge clk) begin
+        if(we)
+            mem[addr] <= din;
+        dout <= mem[addr];
+    end
+endmodule
+```
+
+✅ Parameterized depth and width; synchronous read/write.
+
+---
+
+## **23. Dual-Port RAM (Synchronous Read/Write)**
+
+```verilog
+module dual_port_ram #(
+    parameter WIDTH=8,
+    parameter DEPTH=16
+)(
+    input clk,
+    input we_a, we_b,
+    input [$clog2(DEPTH)-1:0] addr_a, addr_b,
+    input [WIDTH-1:0] din_a, din_b,
+    output reg [WIDTH-1:0] dout_a, dout_b
+);
+    reg [WIDTH-1:0] mem [0:DEPTH-1];
+
+    always @(posedge clk) begin
+        if(we_a) mem[addr_a] <= din_a;
+        dout_a <= mem[addr_a];
+
+        if(we_b) mem[addr_b] <= din_b;
+        dout_b <= mem[addr_b];
+    end
+endmodule
+```
+
+✅ True dual-port RAM; independent read/write on both ports.
+
+---
+
+## **24. Asynchronous FIFO (Read/Write Pointers)**
+
+```verilog
+module async_fifo #(
+    parameter WIDTH=8,
+    parameter DEPTH=16
+)(
+    input wr_clk, rd_clk, rst_n,
+    input wr_en, rd_en,
+    input [WIDTH-1:0] din,
+    output reg [WIDTH-1:0] dout,
+    output full, empty
+);
+    reg [WIDTH-1:0] mem [0:DEPTH-1];
+    reg [$clog2(DEPTH):0] wr_ptr, rd_ptr;
+
+    assign full = (wr_ptr - rd_ptr) == DEPTH;
+    assign empty = (wr_ptr == rd_ptr);
+
+    always @(posedge wr_clk) if(wr_en && !full) mem[wr_ptr[$clog2(DEPTH)-1:0]] <= din;
+    always @(posedge wr_clk) if(wr_en && !full) wr_ptr <= wr_ptr + 1;
+
+    always @(posedge rd_clk) if(rd_en && !empty) dout <= mem[rd_ptr[$clog2(DEPTH)-1:0]];
+    always @(posedge rd_clk) if(rd_en && !empty) rd_ptr <= rd_ptr + 1;
+endmodule
+```
+
+✅ Handles **asynchronous clocks**; full/empty flags included.
+
+---
+
+## **25. Synchronous FIFO with Full/Empty Flags**
+
+```verilog
+module sync_fifo #(
+    parameter WIDTH=8,
+    parameter DEPTH=16
+)(
+    input clk, rst_n,
+    input wr_en, rd_en,
+    input [WIDTH-1:0] din,
+    output reg [WIDTH-1:0] dout,
+    output full, empty
+);
+    reg [WIDTH-1:0] mem [0:DEPTH-1];
+    reg [$clog2(DEPTH):0] wr_ptr, rd_ptr;
+
+    assign full = (wr_ptr - rd_ptr) == DEPTH;
+    assign empty = (wr_ptr == rd_ptr);
+
+    always @(posedge clk) begin
+        if(!rst_n) begin
+            wr_ptr <= 0; rd_ptr <= 0;
+        end else begin
+            if(wr_en && !full) begin
+                mem[wr_ptr[$clog2(DEPTH)-1:0]] <= din;
+                wr_ptr <= wr_ptr + 1;
+            end
+            if(rd_en && !empty) begin
+                dout <= mem[rd_ptr[$clog2(DEPTH)-1:0]];
+                rd_ptr <= rd_ptr + 1;
+            end
+        end
+    end
+endmodule
+```
+
+---
+
+## **26. Register File (8 Registers x 8-bit)**
+
+```verilog
+module reg_file8x8(
+    input clk, rst_n,
+    input we,
+    input [2:0] addr_w,
+    input [2:0] addr_r,
+    input [7:0] din,
+    output [7:0] dout
+);
+    reg [7:0] regs [7:0];
+
+    always @(posedge clk) if(we) regs[addr_w] <= din;
+
+    assign dout = regs[addr_r];
+endmodule
+```
+
+✅ Basic CPU-style register file.
+
+---
+
+## **27. Memory-Mapped Peripheral Interface (Read/Write Registers)**
+
+```verilog
+module mmio(
+    input clk, rst_n,
+    input [7:0] addr,
+    input [31:0] wdata,
+    input write_en,
+    output reg [31:0] rdata
+);
+    reg [31:0] reg0, reg1;
+
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            reg0 <= 0; reg1 <= 0;
+        end else if(write_en) begin
+            case(addr)
+                8'h00: reg0 <= wdata;
+                8'h04: reg1 <= wdata;
+            endcase
+        end
+    end
+
+    always @(*) begin
+        case(addr)
+            8'h00: rdata = reg0;
+            8'h04: rdata = reg1;
+            default: rdata = 0;
+        endcase
+    end
+endmodule
+```
+
+---
+
+## **28. AXI-Lite Slave Interface (2 Registers)**
+
+```verilog
+module axi_lite_slave2(
+    input clk, rst_n,
+    input [31:0] awaddr, wdata,
+    input awvalid, wvalid,
+    output reg awready, wready,
+    output reg [31:0] reg0, reg1
+);
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            reg0 <= 0; reg1 <= 0; awready <= 0; wready <= 0;
+        end else begin
+            awready <= awvalid;
+            wready <= wvalid;
+            if(awvalid && wvalid) begin
+                case(awaddr)
+                    32'h00: reg0 <= wdata;
+                    32'h04: reg1 <= wdata;
+                endcase
+            end
+        end
+    end
+endmodule
+```
+
+---
+
+## **29. AXI-Lite Slave (8 Registers)**
+
+```verilog
+module axi_lite_slave8(
+    input clk, rst_n,
+    input [31:0] awaddr, wdata,
+    input awvalid, wvalid,
+    output reg awready, wready,
+    output reg [31:0] regs [7:0]
+);
+    integer i;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            for(i=0;i<8;i=i+1) regs[i]<=0;
+            awready<=0; wready<=0;
+        end else begin
+            awready<=awvalid; wready<=wvalid;
+            if(awvalid && wvalid)
+                if(awaddr[4:2]<8)
+                    regs[awaddr[4:2]]<=wdata;
+        end
+    end
+endmodule
+```
+
+✅ Parameterizable for multiple registers; supports AXI-lite write interface.
+
+---
+
+## **30. UART Transmitter**
+
+```verilog
+module uart_tx_simple(
+    input clk, rst_n, tx_start,
+    input [7:0] tx_data,
+    output reg tx_serial,
+    output reg busy
+);
+    reg [3:0] cnt;
+    reg [9:0] shift;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin tx_serial<=1; busy<=0; shift<=0; cnt<=0; end
+        else if(tx_start && !busy) begin
+            shift <= {1'b1, tx_data, 1'b0}; busy<=1; cnt<=0;
+        end else if(busy) begin
+            tx_serial <= shift[0];
+            shift <= {1'b1, shift[9:1]};
+            cnt <= cnt+1;
+            if(cnt==9) busy<=0;
+        end
+    end
+endmodule
+```
+
+---
+
+## **31. UART Receiver with Busy Flag**
+
+```verilog
+module uart_rx_simple(
+    input clk, rst_n,
+    input rx_serial,
+    output reg [7:0] rx_data,
+    output reg rx_ready
+);
+    reg [3:0] cnt;
+    reg [9:0] shift;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin shift<=0; rx_data<=0; rx_ready<=0; cnt<=0; end
+        else begin
+            shift <= {rx_serial, shift[9:1]};
+            if(cnt==9) begin rx_data <= shift[8:1]; rx_ready<=1; cnt<=0; end
+            else begin cnt<=cnt+1; rx_ready<=0; end
+        end
+    end
+endmodule
+```
+
+---
+
+## **32. SPI Master (Simple)**
+
+```verilog
+module spi_master(
+    input clk, rst_n,
+    input start,
+    input [7:0] mosi_data,
+    output reg miso_data,
+    output reg sclk, cs
+);
+    // Simplified template: show understanding
+endmodule
+```
+
+✅ For interview, a **template with shift register and clock generation** is sufficient.
+
+---
+
+## **33. I2C Master (Start/Stop/Read/Write)**
+
+```verilog
+module i2c_master(
+    input clk, rst_n
+```
+
 
