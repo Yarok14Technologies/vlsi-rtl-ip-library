@@ -358,4 +358,423 @@ endmodule
 * **Top module** with parameters, ports, internal logic.
 * **Testbench** with DUT instantiation, clock/reset, stimulus, monitors.
 
+ **Qualcomm, NVIDIA, Intel, Broadcom**, etc., they often expect you to know the **standard top module format with AXI/APB interfaces**, since most IPs are part of a bigger SoC.
+
+Here’s a **clean skeleton** for both **AXI4-Lite** (common for register access) and **APB**. You can use/adapt this in any interview or coding round:
+
+---
+
+## 🔹 **AXI4-Lite Top Module (Skeleton)**
+
+```verilog
+//============================================================
+// Company    : Qualcomm (Example)
+// Engineer   : Your Name
+// Design     : AXI4-Lite Peripheral Example
+//============================================================
+
+`timescale 1ns/1ps
+
+module axi_peripheral #(
+    parameter ADDR_WIDTH = 32,
+    parameter DATA_WIDTH = 32
+)(
+    // ---------- Clock & Reset ----------
+    input  wire                   aclk,
+    input  wire                   aresetn,
+
+    // ---------- AXI Write Address Channel ----------
+    input  wire [ADDR_WIDTH-1:0]  s_axi_awaddr,
+    input  wire                   s_axi_awvalid,
+    output reg                    s_axi_awready,
+
+    // ---------- AXI Write Data Channel ----------
+    input  wire [DATA_WIDTH-1:0]  s_axi_wdata,
+    input  wire [(DATA_WIDTH/8)-1:0] s_axi_wstrb,
+    input  wire                   s_axi_wvalid,
+    output reg                    s_axi_wready,
+
+    // ---------- AXI Write Response Channel ----------
+    output reg  [1:0]             s_axi_bresp,
+    output reg                    s_axi_bvalid,
+    input  wire                   s_axi_bready,
+
+    // ---------- AXI Read Address Channel ----------
+    input  wire [ADDR_WIDTH-1:0]  s_axi_araddr,
+    input  wire                   s_axi_arvalid,
+    output reg                    s_axi_arready,
+
+    // ---------- AXI Read Data Channel ----------
+    output reg [DATA_WIDTH-1:0]   s_axi_rdata,
+    output reg [1:0]              s_axi_rresp,
+    output reg                    s_axi_rvalid,
+    input  wire                   s_axi_rready
+);
+
+    // ---------- Internal Registers ----------
+    reg [DATA_WIDTH-1:0] regfile [0:15]; // 16 registers
+
+    // ---------- AXI Write Logic ----------
+    always @(posedge aclk) begin
+        if (!aresetn) begin
+            s_axi_awready <= 0;
+            s_axi_wready  <= 0;
+            s_axi_bvalid  <= 0;
+        end else begin
+            if (s_axi_awvalid && !s_axi_awready) s_axi_awready <= 1;
+            else s_axi_awready <= 0;
+
+            if (s_axi_wvalid && !s_axi_wready) begin
+                regfile[s_axi_awaddr[5:2]] <= s_axi_wdata;
+                s_axi_wready <= 1;
+                s_axi_bvalid <= 1;
+                s_axi_bresp  <= 2'b00; // OKAY
+            end else begin
+                s_axi_wready <= 0;
+                if (s_axi_bready) s_axi_bvalid <= 0;
+            end
+        end
+    end
+
+    // ---------- AXI Read Logic ----------
+    always @(posedge aclk) begin
+        if (!aresetn) begin
+            s_axi_arready <= 0;
+            s_axi_rvalid  <= 0;
+        end else begin
+            if (s_axi_arvalid && !s_axi_arready) begin
+                s_axi_arready <= 1;
+                s_axi_rdata   <= regfile[s_axi_araddr[5:2]];
+                s_axi_rvalid  <= 1;
+                s_axi_rresp   <= 2'b00; // OKAY
+            end else begin
+                s_axi_arready <= 0;
+                if (s_axi_rready) s_axi_rvalid <= 0;
+            end
+        end
+    end
+
+endmodule
+```
+
+---
+
+## 🔹 **APB Top Module (Skeleton)**
+
+```verilog
+//============================================================
+// Design : APB Peripheral Example
+//============================================================
+
+`timescale 1ns/1ps
+
+module apb_peripheral #(
+    parameter ADDR_WIDTH = 8,
+    parameter DATA_WIDTH = 32
+)(
+    // ---------- Clock & Reset ----------
+    input  wire                  pclk,
+    input  wire                  presetn,
+
+    // ---------- APB Bus ----------
+    input  wire                  psel,
+    input  wire                  penable,
+    input  wire                  pwrite,
+    input  wire [ADDR_WIDTH-1:0] paddr,
+    input  wire [DATA_WIDTH-1:0] pwdata,
+    output reg  [DATA_WIDTH-1:0] prdata,
+    output reg                   pready
+);
+
+    // ---------- Internal Registers ----------
+    reg [DATA_WIDTH-1:0] regfile [0:15]; // 16 registers
+
+    // ---------- APB Logic ----------
+    always @(posedge pclk) begin
+        if (!presetn) begin
+            pready <= 0;
+            prdata <= 0;
+        end else begin
+            pready <= 0;
+            if (psel && penable) begin
+                pready <= 1;
+                if (pwrite) begin
+                    regfile[paddr[5:2]] <= pwdata;
+                end else begin
+                    prdata <= regfile[paddr[5:2]];
+                end
+            end
+        end
+    end
+
+endmodule
+```
+
+---
+
+👉 At Qualcomm/NVIDIA, you’ll usually be asked to:
+
+* Write a **simple AXI4-Lite or APB slave** (register file).
+* Show how you’d connect it to a **testbench** (driver → DUT → monitor).
+* Extend it to support **interrupts, status bits, FIFOs, or handshake logic**.
+
+---
+
+🔥 Great — let’s do the **AXI4-Lite TB** and **APB TB**.
+In Qualcomm-style interviews, they love when you show **driver tasks** (write/read), clean **clock/reset**, and **monitors** for responses.
+
+---
+
+# ✅ **AXI4-Lite Testbench Skeleton**
+
+```verilog
+//============================================================
+// Testbench : AXI4-Lite Peripheral
+//============================================================
+`timescale 1ns/1ps
+
+module tb_axi_peripheral;
+
+    // ---------- Parameters ----------
+    parameter ADDR_WIDTH = 32;
+    parameter DATA_WIDTH = 32;
+
+    // ---------- Signals ----------
+    reg                    aclk;
+    reg                    aresetn;
+
+    reg  [ADDR_WIDTH-1:0]  s_axi_awaddr;
+    reg                    s_axi_awvalid;
+    wire                   s_axi_awready;
+
+    reg  [DATA_WIDTH-1:0]  s_axi_wdata;
+    reg  [(DATA_WIDTH/8)-1:0] s_axi_wstrb;
+    reg                    s_axi_wvalid;
+    wire                   s_axi_wready;
+
+    wire [1:0]             s_axi_bresp;
+    wire                   s_axi_bvalid;
+    reg                    s_axi_bready;
+
+    reg  [ADDR_WIDTH-1:0]  s_axi_araddr;
+    reg                    s_axi_arvalid;
+    wire                   s_axi_arready;
+
+    wire [DATA_WIDTH-1:0]  s_axi_rdata;
+    wire [1:0]             s_axi_rresp;
+    wire                   s_axi_rvalid;
+    reg                    s_axi_rready;
+
+    // ---------- DUT ----------
+    axi_peripheral dut (
+        .aclk(aclk),
+        .aresetn(aresetn),
+        .s_axi_awaddr(s_axi_awaddr),
+        .s_axi_awvalid(s_axi_awvalid),
+        .s_axi_awready(s_axi_awready),
+        .s_axi_wdata(s_axi_wdata),
+        .s_axi_wstrb(s_axi_wstrb),
+        .s_axi_wvalid(s_axi_wvalid),
+        .s_axi_wready(s_axi_wready),
+        .s_axi_bresp(s_axi_bresp),
+        .s_axi_bvalid(s_axi_bvalid),
+        .s_axi_bready(s_axi_bready),
+        .s_axi_araddr(s_axi_araddr),
+        .s_axi_arvalid(s_axi_arvalid),
+        .s_axi_arready(s_axi_arready),
+        .s_axi_rdata(s_axi_rdata),
+        .s_axi_rresp(s_axi_rresp),
+        .s_axi_rvalid(s_axi_rvalid),
+        .s_axi_rready(s_axi_rready)
+    );
+
+    // ---------- Clock ----------
+    initial aclk = 0;
+    always #5 aclk = ~aclk; // 100 MHz
+
+    // ---------- Reset ----------
+    initial begin
+        aresetn = 0;
+        #20 aresetn = 1;
+    end
+
+    // ---------- AXI Write Task ----------
+    task axi_write(input [ADDR_WIDTH-1:0] addr, input [DATA_WIDTH-1:0] data);
+    begin
+        // Address phase
+        s_axi_awaddr  = addr;
+        s_axi_awvalid = 1;
+        @(posedge aclk);
+        while (!s_axi_awready) @(posedge aclk);
+        s_axi_awvalid = 0;
+
+        // Data phase
+        s_axi_wdata   = data;
+        s_axi_wstrb   = 'hF;
+        s_axi_wvalid  = 1;
+        @(posedge aclk);
+        while (!s_axi_wready) @(posedge aclk);
+        s_axi_wvalid  = 0;
+
+        // Response
+        s_axi_bready  = 1;
+        @(posedge aclk);
+        while (!s_axi_bvalid) @(posedge aclk);
+        $display("AXI WRITE: Addr=0x%0h, Data=0x%0h, Resp=%0b", addr, data, s_axi_bresp);
+        s_axi_bready  = 0;
+    end
+    endtask
+
+    // ---------- AXI Read Task ----------
+    task axi_read(input [ADDR_WIDTH-1:0] addr, output [DATA_WIDTH-1:0] data);
+    begin
+        // Address phase
+        s_axi_araddr  = addr;
+        s_axi_arvalid = 1;
+        @(posedge aclk);
+        while (!s_axi_arready) @(posedge aclk);
+        s_axi_arvalid = 0;
+
+        // Data phase
+        s_axi_rready  = 1;
+        @(posedge aclk);
+        while (!s_axi_rvalid) @(posedge aclk);
+        data = s_axi_rdata;
+        $display("AXI READ: Addr=0x%0h, Data=0x%0h, Resp=%0b", addr, data, s_axi_rresp);
+        s_axi_rready  = 0;
+    end
+    endtask
+
+    // ---------- Stimulus ----------
+    reg [31:0] rdata;
+    initial begin
+        // Init
+        s_axi_awaddr = 0; s_axi_awvalid = 0;
+        s_axi_wdata = 0;  s_axi_wstrb = 0; s_axi_wvalid = 0;
+        s_axi_bready = 0;
+        s_axi_araddr = 0; s_axi_arvalid = 0; s_axi_rready = 0;
+
+        @(posedge aresetn);
+
+        // Testcase 1: Write & Read
+        axi_write(32'h04, 32'hDEAD_BEEF);
+        axi_read(32'h04, rdata);
+
+        #50 $finish;
+    end
+
+endmodule
+```
+
+---
+
+# ✅ **APB Testbench Skeleton**
+
+```verilog
+//============================================================
+// Testbench : APB Peripheral
+//============================================================
+`timescale 1ns/1ps
+
+module tb_apb_peripheral;
+
+    // ---------- Parameters ----------
+    parameter ADDR_WIDTH = 8;
+    parameter DATA_WIDTH = 32;
+
+    // ---------- Signals ----------
+    reg                   pclk;
+    reg                   presetn;
+    reg                   psel;
+    reg                   penable;
+    reg                   pwrite;
+    reg  [ADDR_WIDTH-1:0] paddr;
+    reg  [DATA_WIDTH-1:0] pwdata;
+    wire [DATA_WIDTH-1:0] prdata;
+    wire                  pready;
+
+    // ---------- DUT ----------
+    apb_peripheral dut (
+        .pclk(pclk),
+        .presetn(presetn),
+        .psel(psel),
+        .penable(penable),
+        .pwrite(pwrite),
+        .paddr(paddr),
+        .pwdata(pwdata),
+        .prdata(prdata),
+        .pready(pready)
+    );
+
+    // ---------- Clock ----------
+    initial pclk = 0;
+    always #10 pclk = ~pclk; // 50 MHz
+
+    // ---------- Reset ----------
+    initial begin
+        presetn = 0;
+        #30 presetn = 1;
+    end
+
+    // ---------- APB Write Task ----------
+    task apb_write(input [ADDR_WIDTH-1:0] addr, input [DATA_WIDTH-1:0] data);
+    begin
+        @(posedge pclk);
+        psel   = 1; pwrite = 1; paddr = addr; pwdata = data; penable = 0;
+        @(posedge pclk);
+        penable = 1;
+        wait(pready);
+        @(posedge pclk);
+        psel = 0; penable = 0;
+        $display("APB WRITE: Addr=0x%0h, Data=0x%0h", addr, data);
+    end
+    endtask
+
+    // ---------- APB Read Task ----------
+    task apb_read(input [ADDR_WIDTH-1:0] addr, output [DATA_WIDTH-1:0] data);
+    begin
+        @(posedge pclk);
+        psel   = 1; pwrite = 0; paddr = addr; penable = 0;
+        @(posedge pclk);
+        penable = 1;
+        wait(pready);
+        @(posedge pclk);
+        data = prdata;
+        psel = 0; penable = 0;
+        $display("APB READ: Addr=0x%0h, Data=0x%0h", addr, data);
+    end
+    endtask
+
+    // ---------- Stimulus ----------
+    reg [31:0] rdata;
+    initial begin
+        // Init
+        psel=0; penable=0; pwrite=0; paddr=0; pwdata=0;
+
+        @(posedge presetn);
+
+        // Testcase 1: Write & Read
+        apb_write(8'h04, 32'hCAFE_F00D);
+        apb_read(8'h04, rdata);
+
+        #100 $finish;
+    end
+
+endmodule
+```
+
+---
+
+### ⚡ What these TBs demonstrate
+
+* **Reusable driver tasks** → `axi_write/axi_read` and `apb_write/apb_read`.
+* **Handshake correctness** → Waits for `ready/valid` (AXI) and `pready` (APB).
+* **Stimulus flow** → Reset → Write → Read → Check result.
+
+---
+
+👉 **cleanly in an interview**, you score **big points**.
+👉 extend TB to have **random transactions, scoreboard, and coverage (UVM style)**.
+
+---
 
