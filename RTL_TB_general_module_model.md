@@ -777,4 +777,187 @@ endmodule
 👉 extend TB to have **random transactions, scoreboard, and coverage (UVM style)**.
 
 ---
+ **Qualcomm-style self-checking AXI4-Lite testbench** with:
+
+* **Driver tasks** for write/read
+* **Monitor** for DUT outputs
+* **Scoreboard** that compares to a **golden model**
+* **PASS/FAIL messages automatically**
+
+This is a **very strong interview-ready template**.
+
+---
+
+# **Self-Checking AXI4-Lite Testbench Template**
+
+```verilog
+`timescale 1ns/1ps
+module tb_axi_selfcheck;
+
+    // ---------- Parameters ----------
+    parameter ADDR_WIDTH = 32;
+    parameter DATA_WIDTH = 32;
+    parameter REG_DEPTH  = 16;
+
+    // ---------- Clock & Reset ----------
+    reg aclk, aresetn;
+
+    // ---------- AXI Signals ----------
+    reg  [ADDR_WIDTH-1:0] s_axi_awaddr;
+    reg                   s_axi_awvalid;
+    wire                  s_axi_awready;
+
+    reg  [DATA_WIDTH-1:0] s_axi_wdata;
+    reg  [(DATA_WIDTH/8)-1:0] s_axi_wstrb;
+    reg                   s_axi_wvalid;
+    wire                  s_axi_wready;
+
+    wire [1:0]            s_axi_bresp;
+    wire                  s_axi_bvalid;
+    reg                   s_axi_bready;
+
+    reg  [ADDR_WIDTH-1:0] s_axi_araddr;
+    reg                   s_axi_arvalid;
+    wire                  s_axi_arready;
+
+    wire [DATA_WIDTH-1:0] s_axi_rdata;
+    wire [1:0]            s_axi_rresp;
+    wire                  s_axi_rvalid;
+    reg                   s_axi_rready;
+
+    // ---------- DUT ----------
+    axi_peripheral dut (
+        .aclk(aclk),
+        .aresetn(aresetn),
+        .s_axi_awaddr(s_axi_awaddr),
+        .s_axi_awvalid(s_axi_awvalid),
+        .s_axi_awready(s_axi_awready),
+        .s_axi_wdata(s_axi_wdata),
+        .s_axi_wstrb(s_axi_wstrb),
+        .s_axi_wvalid(s_axi_wvalid),
+        .s_axi_wready(s_axi_wready),
+        .s_axi_bresp(s_axi_bresp),
+        .s_axi_bvalid(s_axi_bvalid),
+        .s_axi_bready(s_axi_bready),
+        .s_axi_araddr(s_axi_araddr),
+        .s_axi_arvalid(s_axi_arvalid),
+        .s_axi_arready(s_axi_arready),
+        .s_axi_rdata(s_axi_rdata),
+        .s_axi_rresp(s_axi_rresp),
+        .s_axi_rvalid(s_axi_rvalid),
+        .s_axi_rready(s_axi_rready)
+    );
+
+    // ---------- Clock ----------
+    initial aclk = 0;
+    always #5 aclk = ~aclk;
+
+    // ---------- Reset ----------
+    initial begin
+        aresetn = 0;
+        #20 aresetn = 1;
+    end
+
+    // ---------- Golden Model ----------
+    reg [DATA_WIDTH-1:0] golden_mem [0:REG_DEPTH-1];
+
+    function [DATA_WIDTH-1:0] golden_read(input [ADDR_WIDTH-1:0] addr);
+        begin
+            golden_read = golden_mem[addr[5:2]];
+        end
+    endfunction
+
+    // ---------- AXI Write Task ----------
+    task axi_write(input [ADDR_WIDTH-1:0] addr, input [DATA_WIDTH-1:0] data);
+    begin
+        s_axi_awaddr  = addr;
+        s_axi_awvalid = 1;
+        @(posedge aclk);
+        while (!s_axi_awready) @(posedge aclk);
+        s_axi_awvalid = 0;
+
+        s_axi_wdata   = data;
+        s_axi_wstrb   = 'hF;
+        s_axi_wvalid  = 1;
+        @(posedge aclk);
+        while (!s_axi_wready) @(posedge aclk);
+        s_axi_wvalid  = 0;
+
+        s_axi_bready  = 1;
+        @(posedge aclk);
+        while (!s_axi_bvalid) @(posedge aclk);
+        s_axi_bready  = 0;
+
+        // Update golden model
+        golden_mem[addr[5:2]] = data;
+        $display("AXI WRITE: Addr=0x%0h, Data=0x%0h, Golden Updated", addr, data);
+    end
+    endtask
+
+    // ---------- AXI Read Task ----------
+    task axi_read(input [ADDR_WIDTH-1:0] addr);
+        reg [DATA_WIDTH-1:0] expected;
+        reg [DATA_WIDTH-1:0] read_data;
+    begin
+        s_axi_araddr  = addr;
+        s_axi_arvalid = 1;
+        @(posedge aclk);
+        while (!s_axi_arready) @(posedge aclk);
+        s_axi_arvalid = 0;
+
+        s_axi_rready  = 1;
+        @(posedge aclk);
+        while (!s_axi_rvalid) @(posedge aclk);
+        read_data = s_axi_rdata;
+        s_axi_rready = 0;
+
+        expected = golden_read(addr);
+
+        // Self-check
+        if (read_data === expected) begin
+            $display("PASS: Addr=0x%0h, Data=0x%0h", addr, read_data);
+        end else begin
+            $display("FAIL: Addr=0x%0h, Expected=0x%0h, Got=0x%0h", addr, expected, read_data);
+        end
+    end
+    endtask
+
+    // ---------- Stimulus ----------
+    initial begin
+        integer i;
+        // Initialize signals
+        s_axi_awaddr = 0; s_axi_awvalid = 0;
+        s_axi_wdata = 0; s_axi_wvalid = 0; s_axi_wstrb = 0;
+        s_axi_bready = 0;
+        s_axi_araddr = 0; s_axi_arvalid = 0; s_axi_rready = 0;
+
+        @(posedge aresetn);
+
+        // Test 1: Write & Read sequentially
+        for (i = 0; i < REG_DEPTH; i = i + 1) begin
+            axi_write(i*4, $random);
+        end
+
+        for (i = 0; i < REG_DEPTH; i = i + 1) begin
+            axi_read(i*4);
+        end
+
+        $display("All AXI4-Lite testcases completed!");
+        #50 $finish;
+    end
+
+endmodule
+```
+
+---
+
+### ⚡ **Key Features**
+
+1. **Golden model memory** → Stores expected register values.
+2. **Driver tasks** → `axi_write` and `axi_read` abstract AXI protocol.
+3. **Self-checking** → Compares DUT output with golden model.
+4. **PASS/FAIL reporting** → Automatic, with addresses and values.
+5. **Scalable** → Can easily add **randomized tests**, **burst writes/reads**, or **multiple DUTs**.
+
+---
 
