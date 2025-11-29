@@ -871,11 +871,207 @@ endmodule
 
 ---
 
-## **33. I2C Master (Start/Stop/Read/Write)**
+## **33A. I2C Master (Start/Stop/Read/Write)**
 
 ```verilog
 module i2c_master(
     input clk, rst_n
 ```
+
+# **Part 3: I2C Master and APB interface** 
+
+---
+
+## **33. I2C Master (Start/Stop/Read/Write Template)**
+
+```verilog
+module i2c_master(
+    input clk, rst_n,
+    input start,
+    input [7:0] data_in,
+    output reg scl,
+    inout sda,
+    output reg busy
+);
+    // Simplified template for interview purposes
+    // For actual implementation, handle start/stop condition,
+    // read/write bits, acknowledge (ACK), and clock stretching.
+
+    reg [3:0] state;
+    localparam IDLE=0, START=1, SEND=2, ACK=3, STOP=4;
+
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            state <= IDLE; scl <= 1; busy <= 0;
+        end else begin
+            case(state)
+                IDLE: if(start) begin state <= START; busy<=1; end
+                START: begin scl <= 0; state <= SEND; end
+                SEND: begin /* shift out bits */ state <= ACK; end
+                ACK: begin /* check ack */ state <= STOP; end
+                STOP: begin scl<=1; busy<=0; state<=IDLE; end
+            endcase
+        end
+    end
+endmodule
+```
+
+✅ Shows understanding of **I2C FSM & bus control**.
+
+---
+
+## **34. APB Interface Wrapper for Peripheral**
+
+```verilog
+module apb_wrapper(
+    input pclk, presetn,
+    input psel, penable, pwrite,
+    input [31:0] paddr, pwdata,
+    output reg [31:0] prdata
+);
+    reg [31:0] reg0, reg1;
+
+    always @(posedge pclk or negedge presetn) begin
+        if(!presetn) begin reg0<=0; reg1<=0; end
+        else if(psel & penable & pwrite) begin
+            case(paddr[4:2])
+                3'b000: reg0 <= pwdata;
+                3'b001: reg1 <= pwdata;
+            endcase
+        end
+    end
+
+    always @(*) begin
+        case(paddr[4:2])
+            3'b000: prdata = reg0;
+            3'b001: prdata = reg1;
+            default: prdata = 0;
+        endcase
+    end
+endmodule
+```
+
+✅ Standard APB interface template; shows register mapping.
+
+---
+
+# **Part 4: Priority Encoder, Decoder & Multiplexers (Problems 35–39)**
+
+---
+
+## **35. 4-to-2 Priority Encoder**
+
+```verilog
+module priority_encoder4to2(
+    input [3:0] in,
+    output reg [1:0] out,
+    output reg valid
+);
+    always @(*) begin
+        valid = 1;
+        casez(in)
+            4'b1???: out=2'b11;
+            4'b01??: out=2'b10;
+            4'b001?: out=2'b01;
+            4'b0001: out=2'b00;
+            default: begin out=2'b00; valid=0; end
+        endcase
+    end
+endmodule
+```
+
+---
+
+## **36. 4-to-16 Decoder (One-Hot Output)**
+
+```verilog
+module decoder4to16(
+    input [3:0] in,
+    output reg [15:0] out
+);
+    always @(*) begin
+        out = 16'b0;
+        out[in] = 1'b1;
+    end
+endmodule
+```
+
+---
+
+## **37. 8-to-1 Multiplexer (Parameterized Width)**
+
+```verilog
+module mux8to1 #(parameter WIDTH=8)(
+    input [WIDTH-1:0] in0, in1, in2, in3, in4, in5, in6, in7,
+    input [2:0] sel,
+    output reg [WIDTH-1:0] out
+);
+    always @(*) begin
+        case(sel)
+            3'b000: out=in0;
+            3'b001: out=in1;
+            3'b010: out=in2;
+            3'b011: out=in3;
+            3'b100: out=in4;
+            3'b101: out=in5;
+            3'b110: out=in6;
+            3'b111: out=in7;
+        endcase
+    end
+endmodule
+```
+
+---
+
+## **38. 1-to-8 Demultiplexer**
+
+```verilog
+module demux1to8 #(parameter WIDTH=8)(
+    input [WIDTH-1:0] din,
+    input [2:0] sel,
+    output reg [WIDTH-1:0] dout0, dout1, dout2, dout3, dout4, dout5, dout6, dout7
+);
+    always @(*) begin
+        dout0=dout1=dout2=dout3=dout4=dout5=dout6=dout7=0;
+        case(sel)
+            3'b000: dout0=din;
+            3'b001: dout1=din;
+            3'b010: dout2=din;
+            3'b011: dout3=din;
+            3'b100: dout4=din;
+            3'b101: dout5=din;
+            3'b110: dout6=din;
+            3'b111: dout7=din;
+        endcase
+    end
+endmodule
+```
+
+---
+
+## **39. One-Hot to Binary Encoder**
+
+```verilog
+module onehot_to_bin(
+    input [7:0] in,
+    output reg [2:0] out
+);
+    always @(*) begin
+        case(1'b1)
+            in[0]: out=3'b000;
+            in[1]: out=3'b001;
+            in[2]: out=3'b010;
+            in[3]: out=3'b011;
+            in[4]: out=3'b100;
+            in[5]: out=3'b101;
+            in[6]: out=3'b110;
+            in[7]: out=3'b111;
+            default: out=3'b000;
+        endcase
+    end
+endmodule
+```
+
+---
 
 
