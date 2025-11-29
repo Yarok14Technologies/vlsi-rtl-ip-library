@@ -1594,3 +1594,174 @@ All remaining modules (AXI, APB, I2C, SPI, Multiplexers, Encoders, Synchronizers
 
 ---
 
+
+
+```verilog
+`timescale 1ns/1ps
+module tb_all_modules;
+
+    //==================================================
+    // Clock and Reset
+    //==================================================
+    reg clk, rst_n;
+    initial clk = 0;
+    always #5 clk = ~clk; // 100 MHz equivalent
+
+    initial begin
+        rst_n = 0;
+        #20 rst_n = 1;
+    end
+
+    //==================================================
+    // 1. FSM (seq_detect_1011 Mealy)
+    //==================================================
+    reg fsm_din;
+    wire fsm_dout;
+    seq_detect_1011 fsm_uut(.clk(clk), .rst_n(rst_n), .din(fsm_din), .dout(fsm_dout));
+
+    initial begin
+        fsm_din = 0;
+        #25 fsm_din = 1;
+        #10 fsm_din = 0;
+        #10 fsm_din = 1;
+        #10 fsm_din = 1; // 1011 detected
+        #10 fsm_din = 0;
+    end
+
+    //==================================================
+    // 2. Counter
+    //==================================================
+    reg cnt_en;
+    wire [7:0] cnt_out;
+    sync_counter #(8) cnt_uut(.clk(clk), .rst_n(rst_n), .en(cnt_en), .count(cnt_out));
+
+    initial begin
+        cnt_en = 0;
+        #30 cnt_en = 1;
+        #100 cnt_en = 0;
+    end
+
+    //==================================================
+    // 3. Shift Register
+    //==================================================
+    reg sr_serial_in;
+    wire sr_serial_out;
+    shift_reg_serial #(8) sr_uut(.clk(clk), .rst_n(rst_n), .serial_in(sr_serial_in), .serial_out(sr_serial_out));
+
+    initial begin
+        sr_serial_in = 0;
+        #40 sr_serial_in = 1;
+        #10 sr_serial_in = 0;
+        #10 sr_serial_in = 1;
+    end
+
+    //==================================================
+    // 4. Single-Port RAM
+    //==================================================
+    reg ram_we;
+    reg [7:0] ram_din;
+    reg [3:0] ram_addr;
+    wire [7:0] ram_dout;
+    single_port_ram #(8,16) ram_uut(.clk(clk), .we(ram_we), .din(ram_din), .addr(ram_addr), .dout(ram_dout));
+
+    initial begin
+        ram_we = 0; ram_din = 0; ram_addr = 0;
+        #50 ram_we = 1; ram_din = 8'hAA; ram_addr = 4;
+        #10 ram_din = 8'h55; ram_addr = 5;
+        #10 ram_we = 0; ram_addr = 4;
+        #10 ram_addr = 5;
+    end
+
+    //==================================================
+    // 5. FIFO (sync_fifo)
+    //==================================================
+    reg fifo_wr, fifo_rd;
+    reg [7:0] fifo_din;
+    wire [7:0] fifo_dout;
+    wire fifo_full, fifo_empty;
+    sync_fifo #(8,16) fifo_uut(.clk(clk), .rst_n(rst_n), .wr_en(fifo_wr), .rd_en(fifo_rd), .din(fifo_din), .dout(fifo_dout), .full(fifo_full), .empty(fifo_empty));
+
+    initial begin
+        fifo_wr = 0; fifo_rd = 0; fifo_din = 0;
+        #60 fifo_wr = 1; fifo_din = 8'h11;
+        #10 fifo_din = 8'h22;
+        #10 fifo_din = 8'h33;
+        #10 fifo_wr = 0; fifo_rd = 1;
+    end
+
+    //==================================================
+    // 6. ALU
+    //==================================================
+    reg [7:0] alu_a, alu_b;
+    reg [2:0] alu_sel;
+    wire [7:0] alu_y;
+    alu8 alu_uut(.a(alu_a), .b(alu_b), .sel(alu_sel), .y(alu_y));
+
+    initial begin
+        alu_a = 8'h0F; alu_b = 8'h03; alu_sel = 3'b000; #10;
+        alu_sel = 3'b001; #10;
+        alu_sel = 3'b010; #10;
+        alu_sel = 3'b011; #10;
+        alu_sel = 3'b100; #10;
+        alu_sel = 3'b101; #10;
+    end
+
+    //==================================================
+    // 7. UART TX
+    //==================================================
+    reg uart_start;
+    reg [7:0] uart_data;
+    wire uart_serial, uart_busy;
+    uart_tx_simple uart_uut(.clk(clk), .rst_n(rst_n), .tx_start(uart_start), .tx_data(uart_data), .tx_serial(uart_serial), .busy(uart_busy));
+
+    initial begin
+        uart_start = 0; uart_data = 0;
+        #70 uart_data = 8'hA5; uart_start = 1;
+        #10 uart_start = 0;
+    end
+
+    //==================================================
+    // 8. Pipeline2
+    //==================================================
+    reg [7:0] pipe_din;
+    wire [7:0] pipe_stage1, pipe_stage2;
+    pipeline2 #(8) pipe_uut(.clk(clk), .rst_n(rst_n), .din(pipe_din), .stage1(pipe_stage1), .stage2(pipe_stage2));
+
+    initial begin
+        pipe_din = 0;
+        #80 pipe_din = 8'h11;
+        #10 pipe_din = 8'h22;
+        #10 pipe_din = 8'h33;
+    end
+
+    //==================================================
+    // Monitor Outputs
+    //==================================================
+    initial begin
+        $monitor("Time=%0t | FSM dout=%b | CNT=%d | SR_out=%b | RAM dout=%h | FIFO dout=%h | ALU y=%h | UART serial=%b | PIPE stage2=%h", 
+                  $time, fsm_dout, cnt_out, sr_serial_out, ram_dout, fifo_dout, alu_y, uart_serial, pipe_stage2);
+        #500 $finish;
+    end
+
+endmodule
+```
+
+---
+
+### ✅ **Notes:**
+
+1. **Clock & reset** are shared across all modules for simplicity.
+2. Each module has **basic stimulus** (toggle inputs, writes, reads).
+3. `$monitor` prints all relevant signals in **one line**, so you can track multiple modules at once.
+4. **Extendable**: You can add the remaining modules (AXI, APB, SPI, I2C, Multiplexers, Encoders, Clock gating, Synchronizers) in similar sections with their own stimulus.
+5. The file can be **compiled directly in Icarus Verilog**:
+
+```bash
+iverilog -o tb_all tb_all_modules.v <all_module_sources.v>
+vvp tb_all
+```
+
+---
+
+
+
