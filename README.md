@@ -1,5 +1,5 @@
 # vlsi-rtl-ip-library
-ndustry-standard RTL IP blocks for front-end VLSI design. Includes synthesizable, reusable, parameterized modules with lint-clean coding (Verible/Spyglass). Fully testbench-validated using Icarus/Verilator and GTKWave. Built for Qualcomm, NVIDIA, Intel, AMD interview-level and production-grade design readiness.
+Industry-standard RTL IP blocks for front-end VLSI design. Includes synthesizable, reusable, parameterized modules with lint-clean coding (Verible/Spyglass). Fully testbench-validated using Icarus/Verilator and GTKWave. Built for Qualcomm, NVIDIA, Intel, AMD interview-level and production-grade design readiness.
 
 Nice — here are compact, synthesizable, production-quality Verilog RTL examples for each requested block. I kept them parameterized, synchronous, and commented so you can drop them into an ASIC/FPGA flow and adapt timing/FF style as needed.
 
